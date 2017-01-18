@@ -87,6 +87,11 @@ public abstract class Ranking {
                 fpr++;
             list.add(new Point((double) fpr / (ranking.size() - module.size()), (double) tpr / module.size()));
         }
+        //TODO: here we have a bug: |alfa -> 0|
+        if (list.get(0).getX() != 0.0 && list.get(0).getY() != 0.0)
+            System.err.println(list);
+
+
         return list;
     }
 }

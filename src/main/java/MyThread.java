@@ -63,7 +63,7 @@ public class MyThread implements Runnable {
             double alpha = urd.sample();
             System.out.println(Thread.currentThread().getName() + " |:| alpha =  " + alpha);
 
-            int cMethod = 2;
+            int cMethod = 3;
             double[] rms = new double[2 * cMethod];
 
             for (int j = 0; j < times; j++) {
@@ -99,7 +99,7 @@ public class MyThread implements Runnable {
                     probList = generateProbWithDistr(graph, connectedSubgraphs, alpha, Cnk, dist);
                     probListPrOp = new ArrayList<>(probList).
                             stream().filter(x -> x.getGraph().size() == powerOfModule).collect(Collectors.toList());
-                }else{
+                } else {
                     probList = generateProb(graph, connectedSubgraphs, alpha);
                     probListPrOp = probList;
                 }
@@ -107,20 +107,51 @@ public class MyThread implements Runnable {
                 List<Ranking> rankings = new ArrayList<>();
                 rankings.add(new Shmyak(graph, probList, module, 0));
                 rankings.add(new PrefixOptimal(graph, probListPrOp, module, connectedSGwithLinks));
+                rankings.add(new ShmyakCPLEX(graph, probList, module, alpha));
 
-                for (int k = 0; k < cMethod; k++) {
+                rankings.get(0).solve();
+                rankings.get(2).solve();
+                List<Vertex> r0 = rankings.get(0).getRanking();
+                List<Vertex> r2 = rankings.get(2).getRanking();
+                try {
+                    PrintWriter pr = new PrintWriter(new FileOutputStream(new File("outp.txt"), true));
+                    for (Vertex v: module) {
+                        pr.print(v.getName() + " ");
+                    }
+                    pr.println(" : module");
+                    for (Vertex v : r0){
+                        pr.print(v.getName() + " ");
+                    }
+                    pr.println(" : shmyak, auc=" + rankings.get(0).getAuc());
+                    for (Vertex v : r2){
+                        pr.print(v.getName() + " ");
+                    }
+                    pr.println(" : shmyak with cplex, auc=" + rankings.get(2).getAuc());
+                    for (int k = 0; k < r0.size(); k++) {
+                        if (!r0.get(k).equals(r2.get(k))){
+                            System.err.println("mismatched in pos: k=" + k + ", r0[k]=" + r0.get(k).getName() + ", r2[k]=" + r2.get(k).getName());
+                            System.exit(1);
+                        }
+                    }
+                    pr.println("OK!");
+                    pr.flush();
+                    pr.close();
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                }
+               /* for (int k = 0; k < cMethod; k++) {
                     rankings.get(k).solve();
                     rms[k] += Math.pow(rankings.get(k).getAuc(), 2);
                     rms[cMethod + k] += Math.pow(rankings.get(k).getMeanAuc(), 2);
-                }
+                }*/
 
             }
             DecimalFormat four = new DecimalFormat("#0.0000");
             String scores = four.format(alpha) + " ";
-            for (int j = 0; j < cMethod * 2; j++) {
+            /*for (int j = 0; j < 2 * cMethod; j++) {
                 rms[j] = Math.sqrt(rms[j] / times);
                 scores += four.format(rms[j]) + " ";
-            }
+            }*/
             write(scores);
         }
     }
@@ -230,7 +261,7 @@ public class MyThread implements Runnable {
     public static int indexOf(List<List<Integer>> list, List<Integer> elem) {
         for (int i = 0; i < list.size(); i++) {
             List<Integer> el = list.get(i);
-            if (elem.size() == el.size() && IntStream.range(0, elem.size()).filter(x -> el.get(x).equals(elem.get(x))).count() == 0){
+            if (elem.size() == el.size() && IntStream.range(0, elem.size()).filter(x -> el.get(x).equals(elem.get(x))).count() == 0) {
                 return i;
             }
         }

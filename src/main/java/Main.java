@@ -142,7 +142,8 @@ public class Main {
                 String node = sc.next();
                 String weight = sc.next();
                 Vertex v = vertexes.get(node);
-                v.setWeight(new Double(weight));
+                if (v != null)
+                    v.setWeight(new Double(weight));
             }
         }
         List<Vertex> ret = new ArrayList<Vertex>(vertexes.values());
