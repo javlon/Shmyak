@@ -43,7 +43,7 @@ public abstract class Ranking {
         meanAuc = meanAUC(graph, list, ranking);
     }
 
-    private static double getAUC(List<Point> points) {
+    static double getAUC(List<Point> points) {
         double area = 0;
         for (int i = 1; i < points.size(); i++) {
             area += (points.get(i).getX() - points.get(i - 1).getX()) *
@@ -72,8 +72,9 @@ public abstract class Ranking {
         return list;
     }
 
-    private static List<Point> getRocList(List<Vertex> module, List<Vertex> ranking) {
+    static List<Point> getRocList(List<Vertex> module, List<Vertex> ranking) {
         List<Point> list = new ArrayList<>();
+        list.add(new Point(0, 0));
         int tpr = 0, fpr = 0;
         if (module.size() == 0 || ranking.size() == module.size()) {
             list.add(new Point(0, 1));
@@ -91,6 +92,37 @@ public abstract class Ranking {
         if (list.get(0).getX() != 0.0 && list.get(0).getY() != 0.0)
             System.err.println(list);
 
+
+        return list;
+    }
+
+    public static double getAUCPub(List<Point> points) {
+        double area = 0;
+        for (int i = 1; i < points.size(); i++) {
+            area += (2 - points.get(i).getX() - points.get(i - 1).getX()) *
+                    (points.get(i).getY() - points.get(i - 1).getY()) / 2;
+        }
+        return area;
+    }
+    public static List<Point> getRocListPub(List<Vertex> module, List<Vertex> ranking, int sizeRank) {
+        List<Point> list = new ArrayList<>();
+        list.add(new Point(0, 0));
+        int tpr = 0, fpr = 0;
+        if (module.size() == 0) {
+            list.add(new Point(0, 1));
+            list.add(new Point(1, 1));
+            return list;
+        }
+        for (int i = 0; i < ranking.size(); i++) {
+            if (module.contains(ranking.get(i)))
+                tpr++;
+            else
+                fpr++;
+            list.add(new Point((double) fpr / (sizeRank - module.size()), (double) tpr / module.size()));
+        }
+        //TODO: here we have a bug: |alfa -> 0|
+        //if (list.get(0).getX() != 0.0 && list.get(0).getY() != 0.0)
+        //    System.err.println(list);
 
         return list;
     }

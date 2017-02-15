@@ -17,6 +17,6 @@ public class Simple extends Ranking{
         Collections.sort(out, Comparator.comparing(Vertex::getWeight));
         ranking = out;
         calcAuc();
-        calcMeanAuc();
+        //calcMeanAuc();
     }
 }

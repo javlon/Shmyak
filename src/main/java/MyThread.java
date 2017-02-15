@@ -23,22 +23,23 @@ public class MyThread implements Runnable {
     final String dataEdges;
     final String writeFile;
     final boolean fixedSizeModule;
-    final boolean useSamplingDistrib;
+    final String dirToCplex;
 
-    public MyThread(List<List<Integer>> connectedSubgraphs, int powerOfModule, int numberOfRuns, int times,
-                    String dataEdges, String writeFile, boolean useSamplingDistrib) {
-        this.connectedSubgraphs = connectedSubgraphs;
+    public MyThread(int powerOfModule, int numberOfRuns, int times,
+                    String dataEdges, String writeFile, String dirToCplex) {
         this.powerOfModule = powerOfModule;
         this.numberOfRuns = numberOfRuns;
         this.times = times;
         this.dataEdges = dataEdges;
         this.writeFile = writeFile;
+        this.dirToCplex = dirToCplex;
         if (powerOfModule > 0)
             this.fixedSizeModule = true;
         else {
             this.fixedSizeModule = false;
         }
-        this.useSamplingDistrib = useSamplingDistrib;
+        this.connectedSubgraphs = sortedConnectedSubgraphs();
+        System.out.println("Count of connected sub graphs: " + connectedSubgraphs.size());
     }
 
     private synchronized void write(String s) {
@@ -46,11 +47,23 @@ public class MyThread implements Runnable {
         try {
             printer = new PrintWriter(new FileOutputStream(new File(writeFile), true));
             printer.println(s);
+            printer.flush();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         } finally {
             if (printer != null) {
                 printer.close();
+            }
+        }
+    }
+    public void setWeights(List<Vertex> graph, List<Vertex> module, double alpha){
+        BetaDistribution bd = new BetaDistribution(alpha, 1);
+        BetaDistribution ud = new BetaDistribution(1, 1);
+        for (Vertex v : graph) {
+            if (module.contains(v)) {
+                v.setWeight(bd.sample());
+            } else {
+                v.setWeight(ud.sample());
             }
         }
     }
@@ -63,95 +76,67 @@ public class MyThread implements Runnable {
             double alpha = urd.sample();
             System.out.println(Thread.currentThread().getName() + " |:| alpha =  " + alpha);
 
-            int cMethod = 3;
+            int cMethod = 5;
             double[] rms = new double[2 * cMethod];
 
             for (int j = 0; j < times; j++) {
-                BetaDistribution bd = new BetaDistribution(alpha, 1);
-                BetaDistribution ud = new BetaDistribution(1, 1);
 
                 List<Vertex> graph = Main.read(dataEdges, null);
                 if (!fixedSizeModule) {
                     powerOfModule = new Random().nextInt(graph.size() / 2) + 1;
                 }
 
-                List<Vertex> module = generateRandSGFixedSize(graph, powerOfModule);
-
+                boolean isUniform = false;
+                List<Vertex> module = isUniform ? genUniformRand(graph, connectedSubgraphs, powerOfModule, powerOfModule)
+                                                : generateRandSGFixedSize(graph, powerOfModule);
                 System.out.println(Thread.currentThread().getName() + " |:| it = " + i + "." + j + ",  |module| = " + powerOfModule);
-                for (Vertex v : graph) {
-                    if (module.contains(v)) {
-                        v.setWeight(bd.sample());
-                    } else {
-                        v.setWeight(ud.sample());
-                    }
-                }
+
+                setWeights(graph, module, alpha);
 
                 List<Pair<List<Integer>, Pair<List<Integer>, List<Integer>>>> connectedSGwithLinks = new ArrayList<>();
                 init(connectedSubgraphs, connectedSGwithLinks);
 
                 List<ProbOfGraph> probList = null;
-                List<ProbOfGraph> probListPrOp = null;
-                if (useSamplingDistrib) {
+                //if (isUniform){
+                    probList = genUniformProb(graph, connectedSubgraphs, alpha);
+                //}else {
                     Pair<List<List<Integer>>, List<Double>> we = distributionOfSG(graph, powerOfModule);
                     List<List<Integer>> Cnk = we.getKey();
                     List<Double> dist = we.getValue();
 
-                    probList = generateProbWithDistr(graph, connectedSubgraphs, alpha, Cnk, dist);
-                    probListPrOp = new ArrayList<>(probList).
+                    List<ProbOfGraph> distrProbList = generateProbWithDistr(graph, connectedSubgraphs, alpha, Cnk, dist);
+                    List<ProbOfGraph> distrProbListOp= new ArrayList<>(distrProbList).
                             stream().filter(x -> x.getGraph().size() == powerOfModule).collect(Collectors.toList());
-                } else {
-                    probList = generateProb(graph, connectedSubgraphs, alpha);
-                    probListPrOp = probList;
-                }
+                //}
 
                 List<Ranking> rankings = new ArrayList<>();
-                rankings.add(new Shmyak(graph, probList, module, 0));
-                rankings.add(new PrefixOptimal(graph, probListPrOp, module, connectedSGwithLinks));
-                rankings.add(new ShmyakCPLEX(graph, probList, module, alpha));
+                rankings.add(new Simple(graph, probList, module));
+                rankings.add(new MWCS(graph, probList, module));
+                rankings.add(new ShmyakCPLEX(graph, probList, module, alpha, graph.size(), dirToCplex));
+                rankings.add(new PrefixOptimal(graph, probList, module, connectedSGwithLinks));
+                rankings.add(new PrefixOptimal(graph, distrProbListOp, module, connectedSGwithLinks));
 
-                rankings.get(0).solve();
-                rankings.get(2).solve();
-                List<Vertex> r0 = rankings.get(0).getRanking();
-                List<Vertex> r2 = rankings.get(2).getRanking();
-                try {
-                    PrintWriter pr = new PrintWriter(new FileOutputStream(new File("outp.txt"), true));
-                    for (Vertex v: module) {
-                        pr.print(v.getName() + " ");
-                    }
-                    pr.println(" : module");
-                    for (Vertex v : r0){
-                        pr.print(v.getName() + " ");
-                    }
-                    pr.println(" : shmyak, auc=" + rankings.get(0).getAuc());
-                    for (Vertex v : r2){
-                        pr.print(v.getName() + " ");
-                    }
-                    pr.println(" : shmyak with cplex, auc=" + rankings.get(2).getAuc());
-                    for (int k = 0; k < r0.size(); k++) {
-                        if (!r0.get(k).equals(r2.get(k))){
-                            System.err.println("mismatched in pos: k=" + k + ", r0[k]=" + r0.get(k).getName() + ", r2[k]=" + r2.get(k).getName());
-                            System.exit(1);
-                        }
-                    }
-                    pr.println("OK!");
-                    pr.flush();
-                    pr.close();
-                } catch (FileNotFoundException e) {
-                    e.printStackTrace();
-                }
-               /* for (int k = 0; k < cMethod; k++) {
+                long start = System.currentTimeMillis();
+                for (int k = 0; k < cMethod; k++) {
                     rankings.get(k).solve();
+                    rankings.get(k).calcMeanAuc();
                     rms[k] += Math.pow(rankings.get(k).getAuc(), 2);
                     rms[cMethod + k] += Math.pow(rankings.get(k).getMeanAuc(), 2);
-                }*/
+                }
+                System.out.println(System.currentTimeMillis() - start);
 
             }
             DecimalFormat four = new DecimalFormat("#0.0000");
-            String scores = four.format(alpha) + " ";
-            /*for (int j = 0; j < 2 * cMethod; j++) {
+            String scores = four.format(alpha) + " | ";
+            for (int j = 0; j < cMethod; j++) {
                 rms[j] = Math.sqrt(rms[j] / times);
                 scores += four.format(rms[j]) + " ";
-            }*/
+            }
+            scores += " | ";
+            for (int j = 0; j < cMethod; j++) {
+                rms[cMethod + j] = Math.sqrt(rms[cMethod + j] / times);
+                scores += four.format(rms[cMethod + j]) + " ";
+            }
             write(scores);
         }
     }
@@ -220,8 +205,7 @@ public class MyThread implements Runnable {
         return new Pair(subGraphs, dist);
     }
 
-    //rewrite
-    public static List<ProbOfGraph> generateProb(List<Vertex> graph, List<List<Integer>> lists, double alpha) {
+    public static List<ProbOfGraph> genUniformProb(List<Vertex> graph, List<List<Integer>> lists, double alpha){
         List<ProbOfGraph> subGs = new ArrayList<>();
         double sumP = 0.0;
         for (List<Integer> p : lists) {
@@ -269,7 +253,6 @@ public class MyThread implements Runnable {
         return -1;
     }
 
-    //TODO: rewrite with log
     public static double getProb(List<Vertex> subGraph, double alpha) {
         return subGraph.stream().mapToDouble(x -> alpha * Math.pow(x.getWeight(), alpha - 1)).reduce(1, (x, y) -> x * y);
     }
@@ -291,10 +274,16 @@ public class MyThread implements Runnable {
         return list.size() == 0;
     }
 
-    //Generate random connected sub graph
-    public static List<Vertex> generateRandSGUniformDistr(List<List<Integer>> pow2graph, List<Vertex> graph) {
+    public static List<Vertex> genUniformRand(List<Vertex> graph, List<List<Integer>> connectedGraphs, int fromSize, int toSize){
+        List<Integer> set = new ArrayList<>();
+        for (int i = 0; i < connectedGraphs.size(); i++) {
+            int size = connectedGraphs.get(i).size();
+            if (size >= fromSize && size <= toSize)
+                set.add(i);
+        }
         Random rand = new Random();
-        return pow2graph.get(rand.nextInt(pow2graph.size())).stream().map(graph::get).collect(Collectors.toList());
+        int ind = rand.nextInt(set.size());
+        return connectedGraphs.get(ind).stream().map(graph::get).collect(Collectors.toList());
     }
 
     public static List<Vertex> generateRandSGFixedSize(List<Vertex> graph, int number) {
@@ -324,4 +313,59 @@ public class MyThread implements Runnable {
             }
         }
     }
+
+    public List<List<Integer>> sortedConnectedSubgraphs() {
+        List<Vertex> graph = Main.read(dataEdges, null);
+        Set<List<Integer>> pow2graphSet = new HashSet<>();
+        generateConnectedSubgraphsSet(pow2graphSet, graph, IntStream.range(0, graph.size()).boxed().collect(Collectors.toList()), new ArrayList<>(), new ArrayList<>());
+        List<List<Integer>> pow2graph = new ArrayList<>(pow2graphSet);
+        Collections.sort(pow2graph, new Comparator<List<Integer>>() {
+            @Override
+            public int compare(List<Integer> o1, List<Integer> o2) {
+                if (o1.size() < o2.size()) {
+                    return -1;
+                } else if (o1.size() > o2.size()) {
+                    return 1;
+                } else {
+                    for (int i = 0; i < o1.size(); i++) {
+                        if (o1.get(i) < o2.get(i)) {
+                            return -1;
+                        } else if (o1.get(i) > o2.get(i))
+                            return 1;
+                    }
+                    return 0;
+                }
+            }
+        });
+        return pow2graph;
+    }
+
+    public static void generateConnectedSubgraphsSet(Set<List<Integer>> ret, List<Vertex> graph, List<Integer> verticesNotYetConsidered,
+                                                     List<Integer> connected, List<Integer> neighbors) {
+        List<Integer> candidates = null;
+        if (connected.size() == 0) {
+            candidates = new ArrayList<>(verticesNotYetConsidered);
+        } else {
+            candidates = Shmyak.intersection(verticesNotYetConsidered, neighbors);
+        }
+        if (candidates.size() == 0) {
+            if (connected.size() == 0)
+                return;
+            List<Integer> smth = new ArrayList<>(connected);
+            Collections.sort(smth);
+            if (!ret.contains(smth))
+                ret.add(smth);
+        } else {
+            int chosenVertex = candidates.get(candidates.size() - 1);
+            verticesNotYetConsidered.remove(Integer.valueOf(chosenVertex));
+            generateConnectedSubgraphsSet(ret, graph, verticesNotYetConsidered, connected, neighbors);
+            List<Integer> newNeighbors = Shmyak.union(neighbors, graph.get(chosenVertex).getVertices().stream().map(x -> graph.indexOf(x)).collect(Collectors.toList()));
+            connected.add(chosenVertex);
+            generateConnectedSubgraphsSet(ret, graph, verticesNotYetConsidered, connected, newNeighbors);
+            connected.remove(connected.size() - 1);
+            verticesNotYetConsidered.add(chosenVertex);
+        }
+    }
+
+
 }

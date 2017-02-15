@@ -29,6 +29,7 @@ public class MWCS extends Ranking {
                 String res = s.substring(begin + 8, end);
                 ans.addAll(graph.stream().filter(v -> v.getName().equals(res)).collect(Collectors.toList()));
             }
+            sc.close();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
@@ -52,11 +53,14 @@ public class MWCS extends Ranking {
         List<Vertex> heinzRanking = new ArrayList<>();
         for (int i = 0; i < times; ++i) {
             runHeinz(t * i, weights, graph);
-            List<Vertex> heinzList = readHeinz(Main.WRIE_HEINZ_RESULTS, graph);
+            String directory = "data/" + Thread.currentThread().getName();
+            String printHO = directory + "/heinzout.txt";
+            List<Vertex> heinzList = readHeinz(printHO, graph);
             for (Vertex v : heinzList) {
                 if (!heinzRanking.contains(v))
                     heinzRanking.add(v);
             }
+            (new File(printHO)).delete();
         }
         for (Vertex v : graph) {
             if (!heinzRanking.contains(v))
@@ -64,26 +68,34 @@ public class MWCS extends Ranking {
         }
         ranking = heinzRanking;
         calcAuc();
-        calcMeanAuc();
+        //calcMeanAuc();
     }
 
-    private static void runHeinz(double t, double[] weights, List<Vertex> graph) {
+    private void runHeinz(double t, double[] weights, List<Vertex> graph) {
+        String directory = "data/" + Thread.currentThread().getName();
+        String printF = directory + "/pfHeinz.txt";
+        String printfHO = directory + "/heinzout.txt";
+        String edges = "in" + Thread.currentThread().getName() + ".txt";
+
         try {
-            PrintWriter printer = new PrintWriter(Main.NODES_G);
+            PrintWriter printer = new PrintWriter(printF);
             for (int i = 0; i < weights.length; i++) {
                 printer.println(graph.get(i).getName() + " " + (weights[i] + t));
             }
             printer.flush();
+            printer.close();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
 
         try {
             ProcessBuilder pb = new ProcessBuilder();
-            pb.command("./heinz2.1", "-e", Main.dataEdges, "-n", Main.NODES_G, "-m", "4", "-v", "0");
-            pb.redirectOutput(new File(Main.WRIE_HEINZ_RESULTS));
+            pb.command("./heinz2.1", "-e", edges, "-n", printF, "-m", "4", "-v", "0");
+            pb.redirectOutput(new File(printfHO));
             Process process = pb.start();
             process.waitFor();
+            process.destroy();
+            new File(printF).delete();
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }

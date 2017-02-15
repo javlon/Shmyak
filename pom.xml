@@ -21,10 +21,10 @@
                 <artifactId>maven-assembly-plugin</artifactId>
                 <version>2.5.3</version>
                 <configuration>
-                    <finalName>solver</finalName>
+                    <finalName>shmyakSolver</finalName>
                     <archive>
                         <manifest>
-                            <mainClass>Main</mainClass>
+                            <mainClass>ShmyakMain</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

@@ -13,17 +13,19 @@ import java.util.*;
 public class ShmyakCPLEX extends Ranking {
     double alpha;
     int sizeAllGraph;
+    String dirToCplex;
 
-    public ShmyakCPLEX(List<Vertex> graph, List<ProbOfGraph> list, List<Vertex> module, double alpha, int sizeAllGraph) {
+    public ShmyakCPLEX(List<Vertex> graph, List<ProbOfGraph> list, List<Vertex> module, double alpha, int sizeAllGraph, String dirToCplex) {
         super(graph, list, module);
         this.alpha = alpha;
         this.sizeAllGraph = sizeAllGraph;
+        this.dirToCplex = dirToCplex;
     }
 
     @Override
     public void solve() {
         //answer
-        this.ranking = absorb(new ArrayList<>(), graph);
+        this.ranking = absorb(new ArrayList<>(), new ArrayList<>(graph));
         calcAuc();
     }
 
@@ -67,16 +69,22 @@ public class ShmyakCPLEX extends Ranking {
             list.add(candidates.get(0));
             long end = System.currentTimeMillis();
             if (must.size() == 0)
-                System.out.println(i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size()  + ", Time=" + ((end - start)/1000.0));
+                System.out.println(Thread.currentThread().getName() + " " + i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", Time=" + ((end - start) / 1000.0));
             else
-                System.out.println(i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", AUC=" + four.format(Ranking.getAUCPub(Ranking.getRocListPub(module, must, sizeAllGraph)))  + ", Time=" + ((end - start)/1000.0));
+                System.out.println(Thread.currentThread().getName() + " " + i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", AUC=" + four.format(Ranking.getAUCPub(Ranking.getRocListPub(module, must, sizeAllGraph))) + ", Time=" + ((end - start) / 1000.0));
             return list;
         }
         ++i;
-        String edges = "instances/edges" + i + ".txt";
-        String nodes = "instances/nodes" + i + ".txt";
-        String comp = "instances/comp" + i + ".txt";
-        String solution = "instances/solution" + i + ".txt";
+        //directory
+        String directory = "data/" + Thread.currentThread().getName();
+        File nf = new File(directory);
+        if (!nf.exists()) {
+            nf.mkdirs();
+        }
+        String edges = directory + "/edges" + i + ".txt";
+        String nodes = directory + "/nodes" + i + ".txt";
+        String comp = directory + "/comp" + i + ".txt";
+        String solution = directory + "/solution" + i + ".txt";
         try {
             PrintWriter pE = new PrintWriter(new File(edges));
             PrintWriter pN = new PrintWriter(new File(nodes));
@@ -110,19 +118,21 @@ public class ShmyakCPLEX extends Ranking {
             pE.close();
 
             List<Vertex> ret = new ArrayList<>();
-            Pair<List<String>, Double> sol = cplexSolve(nodes, edges, comp, solution);
-            for (String s : sol.getKey()){
+            Pair<List<String>, Double> sol = cplexSolve(nodes, edges, comp, solution, candidates.size());
+            for (String s : sol.getKey()) {
                 int ind = map.get(s);
-                if (ind >= must.size()){
+                if (ind >= must.size()) {
                     ret.add(list.get(ind));
                 }
             }
-
             long end = System.currentTimeMillis();
             if (must.size() == 0)
-                System.out.println(i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size()  + ", Time=" + ((end - start)/1000.0));
+                System.out.println(Thread.currentThread().getName() + " " + i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", Time=" + ((end - start) / 1000.0));
             else
-                System.out.println(i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", AUC=" + four.format(Ranking.getAUCPub(Ranking.getRocListPub(module, must, sizeAllGraph)))  + ", Time=" + ((end - start)/1000.0));
+                System.out.println(Thread.currentThread().getName() + " " + i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", AUC=" + four.format(Ranking.getAUCPub(Ranking.getRocListPub(module, must, sizeAllGraph))) + ", Time=" + ((end - start) / 1000.0));
+            (new File(nodes)).delete();
+            (new File(edges)).delete();
+            (new File(comp)).delete();
             return ret;
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -130,27 +140,36 @@ public class ShmyakCPLEX extends Ranking {
         return null;
     }
 
-    Pair<List<String>, Double> cplexSolve(String nodes, String edges, String comp, String solution){
+    Pair<List<String>, Double> cplexSolve(String nodes, String edges, String comp, String solution, int size) {
         try {
             ProcessBuilder pb = new ProcessBuilder();
-            pb.command("java", "-Djava.library.path=/nfs/home/jisomurodov/CPLEX_Studio1263/cplex/bin/x86-64_linux/",
-                    "-jar", "gmwcs.jar", "-m", "6", "-t", "30",
-                    "-n", nodes, "-e", edges, "-s", solution, "-c", comp);
+            if (size > 1900){
+                pb.command("java", dirToCplex,
+                        "-jar", "gmwcs.jar", "-m", "4", "-t", "300",
+                        "-n", nodes, "-e", edges, "-s", solution, "-c", comp);
+            }else{
+                pb.command("java", dirToCplex,
+                        "-jar", "gmwcs.jar", "-m", "4", "-t", "30",
+                        "-n", nodes, "-e", edges, "-s", solution, "-c", comp);
+            }
             Process process = pb.start();
             process.waitFor();
+            process.destroy();
 
             List<String> names = new ArrayList<>();
             double objScore = 0;
             Scanner sc = new Scanner(new File(solution));
-            while (sc.hasNext()){
+            while (sc.hasNext()) {
                 String name = sc.next();
-                if ('#' != name.charAt(0)){
+                if ('#' != name.charAt(0)) {
                     names.add(name);
-                }else{
+                } else {
                     String score = sc.next();
                     objScore = Double.parseDouble(score);
                 }
             }
+            sc.close();
+            (new File(solution)).delete();
             return new Pair<>(names, objScore);
         } catch (InterruptedException e) {
             e.printStackTrace();
