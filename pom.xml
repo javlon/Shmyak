@@ -24,7 +24,7 @@
                     <finalName>shmyakSolver</finalName>
                     <archive>
                         <manifest>
-                            <mainClass>ShmyakMain</mainClass>
+                            <mainClass>ShmyakCPLEX</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

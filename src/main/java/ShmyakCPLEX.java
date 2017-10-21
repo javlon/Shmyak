@@ -11,13 +11,11 @@ import java.util.*;
  * Created by javlon on 15.12.16.
  */
 public class ShmyakCPLEX extends Ranking {
-    double alpha;
     int sizeAllGraph;
     String dirToCplex;
 
     public ShmyakCPLEX(List<Vertex> graph, List<ProbOfGraph> list, List<Vertex> module, double alpha, int sizeAllGraph, String dirToCplex) {
         super(graph, list, module);
-        this.alpha = alpha;
         this.sizeAllGraph = sizeAllGraph;
         this.dirToCplex = dirToCplex;
     }
@@ -26,7 +24,7 @@ public class ShmyakCPLEX extends Ranking {
     public void solve() {
         //answer
         this.ranking = absorb(new ArrayList<>(), new ArrayList<>(graph));
-        calcAuc();
+        //calcAuc();
     }
 
     List<Vertex> absorb(List<Vertex> blackHole, List<Vertex> candidates) {
@@ -59,7 +57,7 @@ public class ShmyakCPLEX extends Ranking {
     }
 
     int i = 0;
-
+    static String sandbox = "";
     List<Vertex> findMaxSG(List<Vertex> must, List<Vertex> candidates) {
         DecimalFormat four = new DecimalFormat("#0.0000");
 
@@ -67,24 +65,18 @@ public class ShmyakCPLEX extends Ranking {
         if (candidates.size() == 1) {
             List<Vertex> list = new ArrayList<>();
             list.add(candidates.get(0));
-            long end = System.currentTimeMillis();
-            if (must.size() == 0)
-                System.out.println(Thread.currentThread().getName() + " " + i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", Time=" + ((end - start) / 1000.0));
-            else
-                System.out.println(Thread.currentThread().getName() + " " + i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", AUC=" + four.format(Ranking.getAUCPub(Ranking.getRocListPub(module, must, sizeAllGraph))) + ", Time=" + ((end - start) / 1000.0));
             return list;
         }
         ++i;
-        //directory
-        String directory = "data/" + Thread.currentThread().getName();
-        File nf = new File(directory);
+
+        File nf = new File(sandbox);
         if (!nf.exists()) {
             nf.mkdirs();
         }
-        String edges = directory + "/edges" + i + ".txt";
-        String nodes = directory + "/nodes" + i + ".txt";
-        String comp = directory + "/comp" + i + ".txt";
-        String solution = directory + "/solution" + i + ".txt";
+        String edges = sandbox + "/edges" + i + ".txt";
+        String nodes = sandbox + "/nodes" + i + ".txt";
+        String comp = sandbox + "/comp" + i + ".txt";
+        String solution = sandbox + "/solution" + i + ".txt";
         try {
             PrintWriter pE = new PrintWriter(new File(edges));
             PrintWriter pN = new PrintWriter(new File(nodes));
@@ -96,7 +88,7 @@ public class ShmyakCPLEX extends Ranking {
                 map.put(list.get(j).getName(), j);
             }
             for (Vertex v : list) {
-                pN.println(v.getName() + "\t" + ((alpha - 1) * Math.log(v.getWeight()) + Math.log(alpha)));
+                pN.println(v.getName() + "\t" + v.getWeight());
             }
             pN.flush();
             pN.close();
@@ -126,10 +118,11 @@ public class ShmyakCPLEX extends Ranking {
                 }
             }
             long end = System.currentTimeMillis();
-            if (must.size() == 0)
+            /*if (must.size() == 0)
                 System.out.println(Thread.currentThread().getName() + " " + i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", Time=" + ((end - start) / 1000.0));
             else
                 System.out.println(Thread.currentThread().getName() + " " + i + " : |G|=" + list.size() + ", |Must|=" + must.size() + ", |Cand|=" + candidates.size() + ", AUC=" + four.format(Ranking.getAUCPub(Ranking.getRocListPub(module, must, sizeAllGraph))) + ", Time=" + ((end - start) / 1000.0));
+                */
             (new File(nodes)).delete();
             (new File(edges)).delete();
             (new File(comp)).delete();
@@ -145,11 +138,11 @@ public class ShmyakCPLEX extends Ranking {
             ProcessBuilder pb = new ProcessBuilder();
             if (size > 1900){
                 pb.command("java", dirToCplex,
-                        "-jar", "gmwcs.jar", "-m", "4", "-t", "300",
+                        "-jar", pathToGmwcs, "-m", "4", "-t", "300",
                         "-n", nodes, "-e", edges, "-s", solution, "-c", comp);
             }else{
                 pb.command("java", dirToCplex,
-                        "-jar", "gmwcs.jar", "-m", "4", "-t", "30",
+                        "-jar", pathToGmwcs, "-m", "4", "-t", "30",
                         "-n", nodes, "-e", edges, "-s", solution, "-c", comp);
             }
             Process process = pb.start();
@@ -180,5 +173,41 @@ public class ShmyakCPLEX extends Ranking {
         }
         return null;
     }
-
+    static String pathToGmwcs = "gmwcs.jar";
+    public static void main(String[] args) throws FileNotFoundException {
+        String dirToCplex= args[0];
+        pathToGmwcs = args[1];
+        String nodeFile = args[2];
+        String edgeFile = args[3];
+        String signalFile = args[4];
+        String writeFile = args[5];
+        sandbox = args[6];
+        Map<String, Double> sidToScore = new HashMap<>();
+        Map<String, String> nodeToSid = new HashMap<>();
+        Scanner sc = new Scanner(new File(signalFile)).useDelimiter("(\\n|\\s+)");
+        while (sc.hasNext()){
+            sidToScore.put(sc.next(), Double.parseDouble(sc.next()));
+        }
+        sc = new Scanner(new File(nodeFile)).useDelimiter("(\\n|\\s+)");
+        while (sc.hasNext()) {
+            nodeToSid.put(sc.next(), sc.next());
+        }
+        sc.close();
+        List<Vertex> graph = Main.read(edgeFile, null);
+        for(Vertex v: graph){
+            v.setWeight(sidToScore.get(nodeToSid.get(v.getName())));
+        }
+        ShmyakCPLEX xx = new ShmyakCPLEX(graph, null, null, 0, graph.size(), dirToCplex);
+        xx.solve();
+        PrintWriter pw = new PrintWriter(new File(writeFile));
+        List<Vertex> ranking = xx.getRanking();
+        for(int ind = 0; ind < ranking.size(); ++ind){
+            if(ind == ranking.size()-1)
+                pw.print(ranking.get(ind).getName());
+            else
+                pw.print(ranking.get(ind).getName()+ "\t");
+        }
+        pw.flush();
+        pw.close();
+    }
 }

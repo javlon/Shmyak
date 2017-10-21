@@ -61,6 +61,7 @@ public class Main {
         while (sc.hasNext()) {
             String left = sc.next();
             String right = sc.next();
+            String nothing = sc.next();
             Vertex from = vertexes.get(left);
             Vertex to = vertexes.get(right);
             if (from == null) {
